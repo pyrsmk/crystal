@@ -352,14 +352,28 @@ class Crystal::CodeGenVisitor
       # call `#remove_indirection` here so that the downcast call in
       # `#visit(Var)` doesn't spend time expanding module types again and again
       # (it should be the only use site of `node_obj.type`)
-      new_vars["%self"] = LLVMVar.new(@last, node_obj.type.remove_indirection, true)
+      obj_type = node_obj.type.remove_indirection
+      obj_value = @last
+      if obj_type.passed_by_value?
+        temp = alloca(llvm_type(obj_type))
+        assign(temp, obj_type, obj_type, obj_value)
+        obj_value = temp
+      end
+      new_vars["%self"] = LLVMVar.new(obj_value, obj_type, true)
     end
 
-    # Get type if of args and create arg vars
+    # Get type id of args and create arg vars
     arg_type_ids = node.args.map_with_index do |arg, i|
       request_value(arg)
-      new_vars["%arg#{i}"] = LLVMVar.new(@last, arg.type, true)
-      type_id(@last, arg.type)
+      arg_value = @last
+      arg_type_deref = arg.type.remove_indirection
+      if arg_type_deref.passed_by_value?
+        temp = alloca(llvm_type(arg_type_deref))
+        assign(temp, arg_type_deref, arg_type_deref, arg_value)
+        arg_value = temp
+      end
+      new_vars["%arg#{i}"] = LLVMVar.new(arg_value, arg.type, true)
+      type_id(arg_value, arg.type)
     end
 
     # Reuse this call for each dispatch branch
